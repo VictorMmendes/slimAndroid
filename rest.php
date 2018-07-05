@@ -11,9 +11,17 @@
 				array(PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8"));
 	}
 
-	$app->get('/exercicios.json', function() {
+	$app->get('/exercicios.json/:query', function($query) {
+		if($query == "@")
+		{
+			$query = "%%";
+		} else {
+			$query = "%" . $query . "%";
+		}
+
 		$conn = getConn();
-		$sql = "SELECT * FROM exercicio";
+		$sql = "SELECT * FROM exercicio WHERE description LIKE '$query'";
+
 		$stmt = $conn->prepare($sql);
 		$stmt->execute();
 
@@ -27,36 +35,52 @@
 			$stmt = $conn->prepare($sql);
 			$stmt->execute();
 
+			$id = $conn->lastInsertId();
+			$data = date('Y-m-d');
+
+			$sql = "INSERT INTO modificacao (progressdate, id_exercise, weight) values('$data', $id, $weight)";
+			$stmt = $conn->prepare($sql);
+			$stmt->execute();
+
 			echo json_encode("OK");
 	});
 
-	$app->post('/exercicios.json', function() use($app)
-	{
-		$dadoJson = $app->request()->getBody();
-		echo parse_str($dadoJson);
-		// echo $app;
-		// $description=$dadoJson[0]->description;
-		// $repeats=$dadoJson[0]->repeats;
-		// $weight=$dadoJson[0]->weight;
+	$app->get('/update.json/:id&:description&:repeats&:weight', function($id, $description, $repeats, $weight) {
+			$sql = "SELECT weight FROM exercicio WHERE id = $id";
+			$conn = getConn();
+			$stmt = $conn->prepare($sql);
+			$stmt->execute();
 
-		// $myfile = fopen("newfile.txt", "w") or die("Unable to open file!");
-		// $txt = "" . $dadoJson;
-		// fwrite($myfile, $txt);
-		// fclose($myfile);
+			$actualWeight = $stmt->fetch()[0];
 
-		// $sql = "INSERT INTO exercicio (description, repeats, weight) values('oii', '$dadoJson', 12)";
-		// $conn = getConn();
-		// $stmt = $conn->prepare($sql);
-		// $stmt->execute();
+			$sql = "UPDATE exercicio SET description = '$description', repeats='$repeats', weight=$weight WHERE id = $id";
+			$stmt = $conn->prepare($sql);
+			$stmt->execute();
 
-		// $id = $conn->lastInsertId();
-		// $data = date('Y-m-d');
-		//
-		// $sql = "INSERT INTO modificacao (progressdate, id_exercise, weight) values('$data', $id, '$weight')";
-		// $stmt = $conn->prepare($sql);
-		// $stmt->execute();
+			if($actualWeight != $weight)
+			{
+				$data = date('Y-m-d');
 
-		echo json_encode("OK");
+				$sql = "INSERT INTO modificacao (progressdate, id_exercise, weight) values('$data', $id, $weight)";
+				$stmt = $conn->prepare($sql);
+				$stmt->execute();
+			}
+
+			echo json_encode("OK");
+	});
+
+	$app->get('/delete.json/:id', function($id) {
+
+			$sql = "DELETE FROM modificacao WHERE id_exercise = $id";
+			$conn = getConn();
+			$stmt = $conn->prepare($sql);
+			$stmt->execute();
+
+			$sql = "DELETE FROM exercicio WHERE id = $id";
+			$stmt = $conn->prepare($sql);
+			$stmt->execute();
+
+			echo json_encode("OK");
 	});
 
 	$app->get('/modificacoes.json/:id', function($id) {
@@ -65,31 +89,37 @@
 		$stmt = $conn->prepare($sql);
 		$stmt->execute();
 
-		// $animais = $stmt->fetchAll();
-		// foreach ($animais as $animal) {
-		// 	echo $animal['id'] . "<br>";
-		// 	echo $animal['name'] . "<br>";
-		// 	echo $animal['species'] . "<br>";
-		// 	echo $animal['breed'] . "<br>";
-		// 	echo $animal['weight'] . "<br>";
-		// 	echo $animal['birthdate'] . "<br>";
-		// 	echo $animal['size'] . "<br><br>";
-		// }
 		echo json_encode($stmt->fetchAll());
 	});
 
-	$app->post('/', function() use ($app) {
-		echo "<h2>[POST] - Framework Slim</h2>";
-	});
+	$app->get('/deleteMod.json/:id', function($id)
+	{
+			$conn = getConn();
+			$sql = "SELECT id_exercise FROM modificacao WHERE id = $id";
+			$stmt = $conn->prepare($sql);
+			$stmt->execute();
 
+			$id_exercise = $stmt->fetch()[0];
 
-	$app->put('/', function() use ($app) {
-		echo "<h2>[PUT] Framework Slim</h2>";
-	});
+			$sql = "DELETE FROM modificacao WHERE id = $id";
+			$stmt = $conn->prepare($sql);
+			$stmt->execute();
 
+			$sql = "SELECT count(*) as contagem FROM modificacao WHERE id_exercise = $id_exercise";
+			$stmt = $conn->prepare($sql);
+			$stmt->execute();
 
-	$app->delete('/', function() use ($app){
-		echo "<h2>[DELETE] Framework Slim</h2>";
+			$contagem = $stmt->fetch()[0];
+
+			echo $contagem;
+			if($contagem == 0)
+			{
+				$sql = "UPDATE exercicio SET weight = 0 WHERE id = $id_exercise";
+				$stmt = $conn->prepare($sql);
+				$stmt->execute();
+			}
+
+			echo json_encode("OK");
 	});
 
 	$app->run();
